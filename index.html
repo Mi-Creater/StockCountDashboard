@@ -573,13 +573,21 @@ function calculateVariance() {
         const scQty = sc ? sc.quantity : 0;
         const scLoc = sc ? sc.location : 'N/A';
         
-        const variance = sysQty - scQty; // System Qty - Stock Count Qty
+        // Calculate the difference magnitude (System Qty - Stock Count Qty)
+        const difference = sysQty - scQty;
+        let variance = 0;
         let remarks = 'Match';
         
-        if (variance > 0) {
-            remarks = 'Short'; // System Qty > Stock Count Qty
-        } else if (variance < 0) {
-            remarks = 'Excess'; // System Qty < Stock Count Qty
+        if (difference > 0) {
+            // System Qty > Stock Count Qty (Shortage)
+            // User wants: Variance to be NEGATIVE (-1) and Remark: Short
+            variance = -difference; 
+            remarks = 'Short';
+        } else if (difference < 0) {
+            // System Qty < Stock Count Qty (Excess)
+            // User wants: Variance to be POSITIVE (+1) and Remark: Excess
+            variance = Math.abs(difference);
+            remarks = 'Excess';
         }
 
         varianceReportData.push({
