@@ -1,0 +1,941 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Stock Count Dashboard</title>
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+  <style>
+    :root{      --bg:#f3f7f9; --card:#ffffff; --accent:#0f9d58; --muted:#6b7280;      --shadow: 0 8px 24px rgba(12, 28, 40, 0.06);      font-family: Inter, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial;    }
+    body{ margin:0; background:linear-gradient(180deg,#f6fbf7,#f5f8fb); color:#0f172a; padding:28px; }
+    .wrap{ max-width:1100px; margin:0 auto; }
+    header{ display:flex; align-items:center; gap:12px; margin-bottom:18px; }
+    .logo{ width:52px;height:52px;border-radius:10px;background:linear-gradient(135deg,#e6faf0,#d9f2ea);display:flex;align-items:center;justify-content:center;font-weight:700;color:#0a6a3e; }
+    h1{ margin:0; font-size:18px; }
+    .muted{ color:var(--muted); font-size:13px; }
+    .card{ background:var(--card); border-radius:12px; padding:16px; box-shadow:var(--shadow); }
+    .controls{ display:flex; gap:12px; align-items:center; margin-bottom:12px; flex-wrap:wrap; }
+    .btn{ background:linear-gradient(180deg,var(--accent),#0f8347); color:#fff; border:none; padding:8px 12px; border-radius:8px; cursor:pointer; font-weight:600; }
+    .btn.secondary{ background:#fff; color:var(--accent); border:1px solid rgba(15,157,88,0.12); }
+    select, input[type="file"]{ padding:8px 10px; border-radius:8px; border:1px solid #e6eef5; background:#fff; }
+    .topbar{ display:flex; justify-content:space-between; align-items:center; gap:12px; margin-bottom:14px; flex-wrap:wrap; }
+    .status{ font-size:13px; color:var(--muted); }
+    .grid{ margin-top:10px; display:flex; gap:16px; }
+    .left{ flex:1; }
+    .right{ width:360px; }
+    .table-wrap{ margin-top:12px; max-height:440px; overflow:auto; border-radius:8px; border:1px solid #eef3f6; background:#fff; }
+    table{ border-collapse:collapse; width:100%; min-width:620px; }
+    th, td{ padding:8px 10px; border-bottom:1px solid #f1f5f9; text-align:left; font-size:14px; }
+    th{ position:sticky; top:0; background:#fbfffe; font-weight:700; z-index:2; }
+    .small{ font-size:13px; color:var(--muted); }
+    .actions{ display:flex; gap:8px; margin-top:10px; }
+    .right .card{ padding:12px; }
+    .hint{ font-size:12px; color:var(--muted); margin-top:6px; }
+    .footer{ margin-top:12px; font-size:13px; color:var(--muted); }
+    .danger{ color:#b02a2a; font-weight:600; }
+    .metric-card { background: linear-gradient(135deg, #f0f9f4, #e6f7ed); border-radius: 8px; padding: 12px; margin-bottom: 12px; }
+    .metric-value { font-size: 18px; font-weight: 700; color: #0a6a3e; }
+    .metric-label { font-size: 12px; color: var(--muted); }
+    .stats-row { display: flex; gap: 12px; margin-bottom: 16px; }
+    .stats-row .metric-card { flex: 1; }
+    .paste-area {
+      width: 100%;
+      min-height: 120px;
+      padding: 12px;
+      border: 2px dashed #e6eef5;
+      border-radius: 8px;
+      background: #f9fdfb;
+      font-family: monospace;
+      font-size: 13px;
+      margin-top: 8px;
+      resize: vertical;
+    }
+    .paste-area:focus {
+      outline: none;
+      border-color: var(--accent);
+    }
+    .paste-section { margin-top: 16px; }
+    .paste-hint { font-size: 12px; color: var(--muted); margin-top: 4px; }
+    /* New styles for the two-page/panel look */
+    .page-panel { min-height: 300px; padding: 16px; border: 1px solid #eef3f6; border-radius: 8px; margin-bottom: 16px; }
+    .page-title { font-weight: 600; margin-bottom: 10px; font-size: 1.1em; }
+    .variance-stats { display: flex; gap: 12px; margin-top: 10px; }
+    .variance-stat-item { flex: 1; padding: 10px; border-radius: 8px; background: #f0f9f4; text-align: center; }
+    .variance-stat-value { font-size: 16px; font-weight: 700; color: #0a6a3e; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <header>
+      <div class="logo">SC</div>
+      <div>
+        <h1>Stock Count Dashboard</h1>
+        <div class="muted">Upload Excel file or paste data directly from Excel</div>
+      </div>
+    </header>
+
+    <div class="card">
+      <div class="topbar">
+        <div style="display:flex;gap:12px;align-items:center;">
+          <button id="download-sample" class="btn secondary">Download Sample</button>
+          <label class="small">Report:
+            <select id="report-type" style="margin-left:8px;">
+              <option value="stock">Stock Count Report</option>
+              <option value="final">Final Aggregated Report</option>
+              <option value="variance">Variance Report</option>
+            </select>
+          </label>
+        </div>
+
+        <div style="display:flex;gap:8px;align-items:center;">
+          <button id="copy-btn" class="btn">Copy to Excel</button>
+          <button id="export-btn" class="btn secondary">Export .xlsx</button>
+        </div>
+      </div>
+
+      <div id="stock-count-panel">
+        <label class="small">Choose Excel file:
+            <input id="file-input" type="file" accept=".xlsx" style="margin-left:8px;" />
+        </label>
+        <div class="paste-section">
+          <div class="small"><strong>Or paste Stock Count lines from Excel</strong></div>
+          <textarea
+            id="paste-area-stock"
+            class="paste-area"
+            placeholder="Copy raw scan lines from Excel (Ctrl+C) and paste here (Ctrl+V). (Location lines followed by barcode lines)."
+          ></textarea>
+          <div class="paste-hint" id="paste-hint-stock">Paste tabular data with locations and barcodes. First column should contain location codes followed by barcodes.</div>
+        </div>
+
+        <div class="stats-row" id="stats-row">
+          <div class="metric-card">
+            <div class="metric-value" id="locations-count">0</div>
+            <div class="metric-label">Locations</div>
+          </div>
+          <div class="metric-card">
+            <div class="metric-value" id="barcodes-count">0</div>
+            <div class="metric-label">Unique Barcodes</div>
+          </div>
+          <div class="metric-card">
+            <div class="metric-value" id="scans-count">0</div>
+            <div class="metric-label">Total Scans</div>
+          </div>
+        </div>
+      </div>
+      
+      <div id="variance-setup-panel" style="display:none;">
+        <div class="page-title">1. System Inventory (SKU, Location, Qty)</div>
+        <textarea
+          id="paste-area-system"
+          class="paste-area"
+          placeholder="Paste data from Excel (Ctrl+C and Ctrl+V). Format: Column A: SKU, Column B: Location, Column C: System Quantity"
+        ></textarea>
+        <div class="variance-stats">
+            <div class="variance-stat-item">
+                <div id="sys-sku-count" class="variance-stat-value">0</div>
+                <div class="metric-label">System SKUs Loaded</div>
+            </div>
+            <div class="variance-stat-item">
+                <div id="sys-qty-total" class="variance-stat-value">0</div>
+                <div class="metric-label">Total System Qty</div>
+            </div>
+        </div>
+
+        <div class="page-title" style="margin-top: 20px;">2. Stock Count Lines (Scan Data)</div>
+        <label class="small">Choose Excel file (Scan Lines):
+            <input id="file-input-sc" type="file" accept=".xlsx" style="margin-left:8px;" />
+        </label>
+        <textarea
+          id="paste-area-variance-sc"
+          class="paste-area"
+          placeholder="OR Paste raw Stock Count lines (Location lines followed by barcode lines)"
+        ></textarea>
+        <div class="variance-stats">
+            <div class="variance-stat-item">
+                <div id="sc-sku-count" class="variance-stat-value">0</div>
+                <div class="metric-label">Stock Count SKUs</div>
+            </div>
+            <div class="variance-stat-item">
+                <div id="sc-qty-total" class="variance-stat-value">0</div>
+                <div class="metric-label">Total Scanned Qty</div>
+            </div>
+        </div>
+      </div>
+
+      <div class="controls">
+        <button id="filter-variance-btn" class="btn">Filter/Variance</button> <div class="status" id="status">No data loaded</div>
+      </div>
+
+      <div class="grid">
+        <div class="left">
+          <div class="table-wrap card" id="table-wrap">
+            <div style="padding:18px;" id="placeholder">Upload an Excel file, paste data, or click "Download Sample" to get started.</div>
+          </div>
+        </div>
+        <div class="right card">
+          <div><strong>Dashboard Controls</strong></div>
+          <div style="margin-top:12px;">
+            <div class="small"><strong>Auto-save</strong></div>
+            <div class="hint">Your data is automatically saved in the browser for recovery.</div>
+            <div style="margin-top:10px" class="small">Saved: <span id="saved-ind">No</span></div>
+            <div style="margin-top:10px;">
+              <button id="clear-btn" class="btn secondary">Clear saved data</button>
+            </div>
+          </div>
+          <div class="footer">
+            <div class="small"><strong>Processing Information</strong></div>
+            <ul class="small">
+              <li>All processing happens locally in your browser</li>
+              <li>Data format: Location lines followed by barcode lines</li>
+              <li>Supports Excel files and direct paste from Excel</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+<script>/* Stock Count Dashboard - single-file 
+  ... existing comments ... 
+  - NEW: Dual-page/panel input for Variance feature
+*/
+const INPUT_KEY = 'sc_dashboard_input_v2';
+const STATE_KEY = 'sc_dashboard_state_v2';
+const SYSTEM_INVENTORY_KEY = 'sc_dashboard_system_inv_v2';
+
+// Panels and Input Elements
+const stockCountPanel = document.getElementById('stock-count-panel');
+const varianceSetupPanel = document.getElementById('variance-setup-panel');
+
+const fileInputStock = document.getElementById('file-input'); // Existing stock file input
+const fileInputSC = document.getElementById('file-input-sc'); // New variance stock count file input
+const pasteAreaStock = document.getElementById('paste-area-stock'); // Stock/Final report paste area
+const pasteAreaSystem = document.getElementById('paste-area-system'); // System Inventory paste area
+const pasteAreaVarianceSC = document.getElementById('paste-area-variance-sc'); // Variance Stock Count paste area
+
+// Existing Elements
+const downloadSample = document.getElementById('download-sample');
+const statusEl = document.getElementById('status');
+const placeholder = document.getElementById('placeholder');
+const tableWrap = document.getElementById('table-wrap');
+const reportType = document.getElementById('report-type');
+const copyBtn = document.getElementById('copy-btn');
+const exportBtn = document.getElementById('export-btn');
+const savedInd = document.getElementById('saved-ind');
+const clearBtn = document.getElementById('clear-btn');
+const statsRow = document.getElementById('stats-row');
+const locationsCount = document.getElementById('locations-count');
+const barcodesCount = document.getElementById('barcodes-count');
+const scansCount = document.getElementById('scans-count');
+const filterVarianceBtn = document.getElementById('filter-variance-btn');
+
+// New Stat Elements
+const sysSkuCount = document.getElementById('sys-sku-count');
+const sysQtyTotal = document.getElementById('sys-qty-total');
+const scSkuCount = document.getElementById('sc-sku-count');
+const scQtyTotal = document.getElementById('sc-qty-total');
+
+
+let lastLines = [];      // raw lines from first column (for stock count)
+let parsed = null;       // { byLocation: { loc: {barcode:qty} } } (for stock count)
+let currentReport = 'stock';
+
+// Global variables for Variance Feature
+// Format: { SKU: { location: string, quantity: number } }
+let systemInventory = {}; 
+// Format: { SKU: { location: string, quantity: number } }
+let stockCountInventory = {}; 
+let varianceReportData = []; // Array of variance objects
+
+// default patterns
+const locPatternStr = '[A-Za-z]+\\d{6}';
+const barPatternStr = '^\\d+$';
+const locRegex = new RegExp('^' + locPatternStr + '$');
+const barRegex = new RegExp(barPatternStr);
+
+
+// --- EVENT LISTENERS ---
+
+// File Input (Stock Count / Final Report)
+fileInputStock.addEventListener('change', async ()=>{
+  if(!fileInputStock.files || fileInputStock.files.length === 0) return;
+  const f = fileInputStock.files[0];
+  if(!f.name.toLowerCase().endsWith('.xlsx')){
+    statusError('Please choose an .xlsx file (Excel).');
+    return;
+  }
+  try {
+    const lines = await readXlsxFirstColumn(f);
+    processStockCountLines(lines, true);
+  } catch(err){
+    statusError('Error reading file: ' + (err && err.message ? err.message : err));
+  }
+});
+
+// File Input (Variance Stock Count)
+fileInputSC.addEventListener('change', async ()=>{
+  if(!fileInputSC.files || fileInputSC.files.length === 0) return;
+  const f = fileInputSC.files[0];
+  if(!f.name.toLowerCase().endsWith('.xlsx')){
+    statusError('Please choose an .xlsx file (Excel).');
+    return;
+  }
+  try {
+    const lines = await readXlsxFirstColumn(f);
+    // Note: Do not save this in lastLines/parsed for Stock/Final reports
+    processVarianceStockCountLines(lines);
+  } catch(err){
+    statusError('Error reading file: ' + (err && err.message ? err.message : err));
+  }
+});
+
+// Handle paste from Excel for Stock/Final Report
+pasteAreaStock.addEventListener('paste', (e) => {
+  setTimeout(() => {
+    processPastedStockCountData(pasteAreaStock.value, true);
+  }, 10);
+});
+
+// Handle paste from Excel for System Inventory (Variance Panel)
+pasteAreaSystem.addEventListener('paste', (e) => {
+  setTimeout(() => {
+    processPastedSystemInventory(pasteAreaSystem.value);
+  }, 10);
+});
+
+// Handle paste from Excel for Stock Count Lines (Variance Panel)
+pasteAreaVarianceSC.addEventListener('paste', (e) => {
+  setTimeout(() => {
+    processPastedStockCountData(pasteAreaVarianceSC.value, false);
+  }, 10);
+});
+
+
+// Calculate Variance Button
+filterVarianceBtn.addEventListener('click', () => {
+    if(reportType.value !== 'variance') {
+        // For Stock/Final reports, this button should just re-render/filter if needed, 
+        // but for now, we'll ensure the correct report is selected.
+        statusError('Please select "Variance Report" from the dropdown and click this button to calculate variance.');
+        return;
+    }
+
+    if(Object.keys(systemInventory).length === 0) {
+        statusError('System Inventory data is missing. Please paste data in the System Inventory area.');
+        return;
+    }
+
+    if(Object.keys(stockCountInventory).length === 0) {
+        statusError('Stock Count data is missing. Please upload or paste scan lines.');
+        return;
+    }
+    
+    calculateVariance();
+    renderTable(); // Re-render to show the variance report
+});
+
+
+// Report Type change listener
+reportType.addEventListener('change', ()=> {
+  currentReport = reportType.value;
+  saveState();
+  
+  if (currentReport === 'variance') {
+    stockCountPanel.style.display = 'none';
+    varianceSetupPanel.style.display = 'block';
+    updateVarianceStats(); // Show current loaded stats
+  } else {
+    stockCountPanel.style.display = 'block';
+    varianceSetupPanel.style.display = 'none';
+  }
+  renderTable();
+});
+
+
+// --- DATA PROCESSING FUNCTIONS ---
+
+// Process System Inventory Paste
+function processPastedSystemInventory(pastedText) {
+  const lines = pastedText.split('\n')
+    .map(line => line.trim())
+    .filter(line => line.length > 0)
+    .map(line => line.split('\t')); // Split by tab to get columns
+
+  systemInventory = {};
+  let validRows = 0;
+  let totalQty = 0;
+
+  // Expected format: Column A: SKU, Column B: Location, Column C: System Quantity
+  for(const row of lines){
+    const sku = String(row[0] || '').trim();
+    const location = String(row[1] || '').trim();
+    const qty = parseInt(row[2], 10);
+
+    if(sku && location && !isNaN(qty) && qty >= 0){
+      systemInventory[sku] = {
+        location: location,
+        quantity: qty
+      };
+      totalQty += qty;
+      validRows++;
+    }
+  }
+
+  if(validRows > 0){
+    localStorage.setItem(SYSTEM_INVENTORY_KEY, JSON.stringify(systemInventory));
+    status(`System Inventory loaded: ${validRows} unique SKUs.`);
+    updateVarianceStats(totalQty);
+  } else {
+    statusError('Error parsing System Inventory. Ensure format is: SKU (Col A), Location (Col B), Qty (Col C).');
+  }
+}
+
+// Process Stock Count Data (For Stock/Final Report)
+function processPastedStockCountData(pastedText, isMainReport) {
+  const lines = pastedText.split('\n')
+    .map(line => line.trim())
+    .filter(line => line.length > 0)
+    .map(line => {
+      // If the line contains tabs, we only need the first column
+      if (line.includes('\t')) {
+        return line.split('\t')[0];
+      }
+      return line;
+    });
+
+  if (lines.length === 0) {
+    statusError('No valid data found in pasted content.');
+    return;
+  }
+  
+  if (isMainReport) {
+    // For Stock Count / Final Report
+    lastLines = lines;
+    saveInput();
+    parsed = parseLines(lastLines);
+    processVarianceStockCountLines(lines); // Also update variance SC data
+    updateStats();
+    status(`Processed ${lines.length} pasted lines. Locations: ${Object.keys(parsed.byLocation).length}. Total scans: ${countTotal(parsed)}.`);
+    renderTable();
+  } else {
+    // For Variance Stock Count Input only
+    processVarianceStockCountLines(lines);
+    // Note: Do not re-render table automatically, wait for Filter/Variance button
+    status(`Variance Stock Count Lines processed: ${lines.length} lines.`);
+  }
+}
+
+// Helper to process Stock Count lines for the Variance Report
+function processVarianceStockCountLines(lines) {
+    const scParsed = parseLines(lines);
+    stockCountInventory = aggregateParsedData(scParsed);
+    updateVarianceStats();
+}
+
+// read first column of xlsx
+function readXlsxFirstColumn(file){
+  return new Promise((res,rej)=>{
+    const fr = new FileReader();
+    fr.onload = (ev)=>{
+      try {
+        const data = new Uint8Array(ev.target.result);
+        const wb = XLSX.read(data, {type:'array'});
+        const sheet = wb.Sheets[wb.SheetNames[0]];
+        const aoa = XLSX.utils.sheet_to_json(sheet, {header:1, raw:false});
+        const col = aoa.map(r => (r && r[0]) ? String(r[0]).trim() : '').filter(x=>x!=='');
+        res(col);
+      } catch(e){
+        rej(e);
+      }
+    };
+    fr.onerror = ()=> rej(fr.error);
+    fr.readAsArrayBuffer(file);
+  });
+}
+
+// parse lines into byLocation mapping
+function parseLines(lines){
+  const byLocation = {};
+  let current = null;
+  let anyLoc = false;
+  for(const raw of lines){
+    const line = String(raw).trim();
+    if(line === '') continue;
+    if(locRegex.test(line)){
+      current = line;
+      anyLoc = true;
+      if(!byLocation[current]) byLocation[current] = {};
+      continue;
+    }
+    if(barRegex.test(line)){
+      if(!current){
+        current = 'UNKNOWN';
+        if(!byLocation[current]) byLocation[current] = {};
+      }
+      byLocation[current][line] = (byLocation[current][line] || 0) + 1;
+      continue;
+    }
+    // fallback heuristics
+    if(/^[A-Za-z]+\d{4,}$/.test(line)){ current = line; if(!byLocation[current]) byLocation[current] = {}; anyLoc=true; continue; }
+    if(/^\d{5,}$/.test(line)){ if(!current){ current='UNKNOWN'; if(!byLocation[current]) byLocation[current]={}; } byLocation[current][line]=(byLocation[current][line]||0)+1; continue; }
+    // otherwise treat as barcode under current or UNKNOWN
+    if(!current){ current='UNKNOWN'; if(!byLocation[current]) byLocation[current]={}; }
+    byLocation[current][line] = (byLocation[current][line] || 0) + 1;
+  }
+  return { byLocation };
+}
+
+function countTotal(data){
+  let s = 0;
+  for(const loc of Object.keys(data.byLocation || {})){
+    for(const b of Object.keys(data.byLocation[loc])) s += data.byLocation[loc][b];
+  }
+  return s;
+}
+
+// Helper to convert parsed stock count data into SKU aggregation for variance
+function aggregateParsedData(data) {
+    const agg = {};
+    if (!data || !data.byLocation) return agg;
+    for (const loc of Object.keys(data.byLocation)) {
+        const map = data.byLocation[loc];
+        for (const sku of Object.keys(map)) {
+            if (!agg[sku]) {
+                agg[sku] = {
+                    location: new Set(),
+                    quantity: 0
+                };
+            }
+            agg[sku].quantity += map[sku];
+            agg[sku].location.add(loc);
+        }
+    }
+
+    const finalAgg = {};
+    for(const sku in agg) {
+      finalAgg[sku] = {
+        location: Array.from(agg[sku].location).join(', '),
+        quantity: agg[sku].quantity
+      }
+    }
+    return finalAgg;
+}
+
+// Update statistics cards for Stock/Final Report
+function updateStats() {
+  if (currentReport === 'variance' || !parsed) {
+      statsRow.style.display = 'none';
+      return;
+  }
+
+  const locations = Object.keys(parsed.byLocation).length;
+  const totalScans = countTotal(parsed);
+
+  const uniqueBarcodes = new Set();
+  for(const loc of Object.keys(parsed.byLocation)){
+    for(const b of Object.keys(parsed.byLocation[loc])) {
+      uniqueBarcodes.add(b);
+    }
+  }
+
+  locationsCount.textContent = locations;
+  barcodesCount.textContent = uniqueBarcodes.size;
+  scansCount.textContent = totalScans;
+
+  statsRow.style.display = 'flex';
+}
+
+// Update statistics cards for Variance Report Setup Panel
+function updateVarianceStats() {
+    const sysSKUCount = Object.keys(systemInventory).length;
+    const sysTotalQty = Object.values(systemInventory).reduce((sum, item) => sum + item.quantity, 0);
+
+    const scSKUCount = Object.keys(stockCountInventory).length;
+    const scTotalQty = Object.values(stockCountInventory).reduce((sum, item) => sum + item.quantity, 0);
+
+    sysSkuCount.textContent = sysSKUCount.toLocaleString();
+    sysQtyTotal.textContent = sysTotalQty.toLocaleString();
+    scSkuCount.textContent = scSKUCount.toLocaleString();
+    scQtyTotal.textContent = scTotalQty.toLocaleString();
+}
+
+// Calculate Variance
+function calculateVariance() {
+    varianceReportData = [];
+    const allSKUs = new Set([...Object.keys(systemInventory), ...Object.keys(stockCountInventory)]);
+    
+    for(const sku of Array.from(allSKUs).sort()){
+        const sys = systemInventory[sku];
+        const sc = stockCountInventory[sku];
+        
+        const sysQty = sys ? sys.quantity : 0;
+        const sysLoc = sys ? sys.location : 'N/A';
+        
+        const scQty = sc ? sc.quantity : 0;
+        const scLoc = sc ? sc.location : 'N/A';
+        
+        const variance = sysQty - scQty; // System Qty - Stock Count Qty
+        let remarks = 'Match';
+        
+        if (variance > 0) {
+            remarks = 'Short'; // System Qty > Stock Count Qty
+        } else if (variance < 0) {
+            remarks = 'Excess'; // System Qty < Stock Count Qty
+        }
+
+        varianceReportData.push({
+            sku,
+            sysLoc,
+            scLoc,
+            sysQty,
+            scQty,
+            variance,
+            remarks
+        });
+    }
+    status(`Variance calculated for ${allSKUs.size} unique SKUs.`);
+}
+
+
+// --- REPORT RENDERING / EXPORT ---
+
+// render the chosen report as HTML table
+function renderTable(){
+  tableWrap.scrollTop = 0;
+  tableWrap.innerHTML = '';
+  const type = reportType.value || 'stock';
+  currentReport = type;
+
+  if (type !== 'variance' && (!parsed || !parsed.byLocation || Object.keys(parsed.byLocation).length === 0)) {
+    placeholder.textContent = 'Upload an Excel file, paste data, or click "Download Sample" to get started.';
+    placeholder.style.display = 'block';
+    tableWrap.appendChild(placeholder);
+    return;
+  }
+  
+  if (type === 'variance' && varianceReportData.length === 0) {
+    placeholder.textContent = 'Please paste System Inventory and Stock Count data above, then click "Filter/Variance".';
+    placeholder.style.display = 'block';
+    tableWrap.appendChild(placeholder);
+    status('Variance Report ready for calculation.');
+    return;
+  }
+  
+  placeholder.style.display = 'none';
+
+  if(type === 'stock'){
+    // ... (existing 'stock' report logic)
+    const rows = [];
+    for(const loc of Object.keys(parsed.byLocation)){
+      const map = parsed.byLocation[loc];
+      for(const b of Object.keys(map)) rows.push({barcode:b, location:loc, qty:map[b]});
+    }
+    rows.sort((a,b)=> a.location.localeCompare(b.location) || a.barcode.localeCompare(b.barcode));
+    const table = buildTable(['Barcode','Location','Qty'], rows.map(r=>[r.barcode, r.location, String(r.qty)]));
+    tableWrap.appendChild(table);
+    status(`Stock Count: ${rows.length} rows · Locations: ${Object.keys(parsed.byLocation).length}`);
+  } else if (type === 'final'){
+    // ... (existing 'final' report logic)
+    const agg = {};
+    for(const loc of Object.keys(parsed.byLocation)){
+      const map = parsed.byLocation[loc];
+      for(const b of Object.keys(map)){
+        if(!agg[b]) agg[b] = {total:0, locs: new Set()};
+        agg[b].total += map[b];
+        agg[b].locs.add(loc);
+      }
+    }
+    const rows = Object.keys(agg).sort().map(b => [b, Array.from(agg[b].locs).join(', '), String(agg[b].total)]);
+    const table = buildTable(['Barcode','Locations','Total Qty'], rows);
+    tableWrap.appendChild(table);
+    status(`Final Report: ${rows.length} unique barcodes · Total scans: ${countTotal(parsed)}`);
+  } else if (type === 'variance') {
+    // Variance Report rendering
+    const headers = ['SKU', 'System Location', 'Stock Count Location', 'System Quantity', 'Stock Count Quantity', 'Variance', 'Remarks'];
+    const rows = varianceReportData.map(r => [
+        r.sku,
+        r.sysLoc,
+        r.scLoc,
+        String(r.sysQty),
+        String(r.scQty),
+        String(r.variance),
+        r.remarks
+    ]);
+    const table = buildTable(headers, rows);
+    tableWrap.appendChild(table);
+    status(`Variance Report generated: ${rows.length} variance records.`);
+  }
+
+  savedInd.textContent = localStorage.getItem(INPUT_KEY) ? 'Yes' : 'No';
+}
+
+// helper: build table element from header + 2D rows
+function buildTable(header, rows){
+  const table = document.createElement('table');
+  const thead = document.createElement('thead');
+  const trh = document.createElement('tr');
+  header.forEach(h=>{
+    const th = document.createElement('th');
+    th.textContent = h;
+    trh.appendChild(th);
+  });
+  thead.appendChild(trh);
+  table.appendChild(thead);
+
+  const tbody = document.createElement('tbody');
+  for(const r of rows){
+    const tr = document.createElement('tr');
+    r.forEach((cell, i)=>{
+      const td = document.createElement('td');
+      td.textContent = cell;
+      tr.appendChild(td);
+    });
+    tbody.appendChild(tr);
+  }
+  table.appendChild(tbody);
+  return table;
+}
+
+// build TSV for variance report
+function buildVarianceTSV(){
+    const headers = ['SKU', 'System Location', 'Stock Count Location', 'System Quantity', 'Stock Count Quantity', 'Variance', 'Remarks'];
+    let lines = [headers.join('\t')];
+    
+    varianceReportData.forEach(r => {
+        lines.push([
+            r.sku,
+            r.sysLoc,
+            r.scLoc,
+            String(r.sysQty),
+            String(r.scQty),
+            String(r.variance),
+            r.remarks
+        ].join('\t'));
+    });
+    return lines.join('\n');
+}
+
+// build TSV from current report (Stock/Final)
+function buildTSV(){
+  const type = currentReport;
+  let lines = [];
+  if(type === 'stock'){
+    lines.push(['Barcode','Location','Qty'].join('\t'));
+    for(const loc of Object.keys(parsed.byLocation).sort()){
+      const map = parsed.byLocation[loc];
+      for(const b of Object.keys(map).sort()){
+        lines.push([b, loc, String(map[b])].join('\t'));
+      }
+    }
+  } else { // Final Report
+    lines.push(['Barcode','Locations','TotalQty'].join('\t'));
+    const agg = {};
+    for(const loc of Object.keys(parsed.byLocation)){
+      const map = parsed.byLocation[loc];
+      for(const b of Object.keys(map)){
+        if(!agg[b]) agg[b] = { total:0, locs: new Set() };
+        agg[b].total += map[b];
+        agg[b].locs.add(loc);
+      }
+    }
+    for(const b of Object.keys(agg).sort()){
+      lines.push([b, Array.from(agg[b].locs).join(', '), String(agg[b].total)].join('\t'));
+    }
+  }
+  return lines.join('\n');
+}
+
+// export current report as .xlsx
+exportBtn.addEventListener('click', ()=>{
+  const type = currentReport;
+  
+  if (type === 'variance') {
+      if(varianceReportData.length === 0) return statusError('No Variance Report data to export.');
+      const wb = XLSX.utils.book_new();
+      let aoa = [];
+      aoa.push(['SKU', 'System Location', 'Stock Count Location', 'System Quantity', 'Stock Count Quantity', 'Variance', 'Remarks']);
+      varianceReportData.forEach(r => {
+          aoa.push([r.sku, r.sysLoc, r.scLoc, r.sysQty, r.scQty, r.variance, r.remarks]);
+      });
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(aoa), 'Variance_Report');
+      const wbout = XLSX.write(wb, {bookType:'xlsx', type:'array'});
+      downloadArrayAsFile(wbout, 'inventory_variance_report.xlsx');
+      status('Variance Report exported (.xlsx).');
+      return;
+  }
+  
+  // Stock/Final Report export logic
+  if(!parsed) return statusError('No parsed data to export. Upload an .xlsx file first.');
+  const wb = XLSX.utils.book_new();
+  let aoa = [];
+
+  if(type === 'stock'){
+    aoa.push(['Barcode','Location','Qty']);
+    for(const loc of Object.keys(parsed.byLocation).sort()){
+      const map = parsed.byLocation[loc];
+      for(const b of Object.keys(map).sort()){
+        aoa.push([b, loc, map[b]]);
+      }
+    }
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(aoa), 'Stock_Count');
+    const wbout = XLSX.write(wb, {bookType:'xlsx', type:'array'});
+    downloadArrayAsFile(wbout, 'stock_count_report.xlsx');
+    status('Stock Count exported (.xlsx).');
+  } else if (type === 'final') {
+    aoa.push(['Barcode','Locations','TotalQty']);
+    const agg = {};
+    for(const loc of Object.keys(parsed.byLocation)){
+      const map = parsed.byLocation[loc];
+      for(const b of Object.keys(map)){
+        if(!agg[b]) agg[b] = { total:0, locs: new Set() };
+        agg[b].total += map[b];
+        agg[b].locs.add(loc);
+      }
+    }
+    for(const b of Object.keys(agg).sort()){
+      aoa.push([b, Array.from(agg[b].locs).join(', '), agg[b].total]);
+    }
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(aoa), 'Final_Report');
+    const wbout = XLSX.write(wb, {bookType:'xlsx', type:'array'});
+    downloadArrayAsFile(wbout, 'final_report.xlsx');
+    status('Final report exported (.xlsx).');
+  }
+});
+
+// copy to clipboard as TSV (Excel-friendly)
+copyBtn.addEventListener('click', async ()=>{
+  let tsv;
+  if(currentReport === 'variance'){
+    if(varianceReportData.length === 0) return statusError('No Variance Report data to copy.');
+    tsv = buildVarianceTSV();
+    status('Copied Variance Report to clipboard. Paste into Excel (Ctrl+V).');
+  } else {
+    if(!parsed) return statusError('No parsed data to copy. Upload an .xlsx file first.');
+    tsv = buildTSV();
+    status('Copied table to clipboard. Paste into Excel (Ctrl+V).');
+  }
+  
+  try {
+    await navigator.clipboard.writeText(tsv);
+  } catch(err){
+    statusError('Copy failed: ' + (err.message || err));
+  }
+});
+
+
+// --- UTILITIES / RESTORE ---
+
+function status(msg){ statusEl.textContent = msg; statusEl.style.color = ''; }
+function statusError(msg){ statusEl.textContent = msg; statusEl.style.color = '#b02a2a'; }
+function downloadArrayAsFile(arr, filename){
+  const blob = new Blob([arr], {type:'application/octet-stream'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = filename; document.body.appendChild(a); a.click(); a.remove();
+  URL.revokeObjectURL(url);
+}
+
+// auto-save and restore
+function saveInput(){
+  try {
+    localStorage.setItem(INPUT_KEY, JSON.stringify(lastLines || []));
+    localStorage.setItem(STATE_KEY, JSON.stringify({ report: reportType.value || 'stock' }));
+    savedInd.textContent = 'Yes';
+  } catch(e){ /* ignore */ }
+}
+
+function saveState(){ saveInput(); }
+
+function restore(){
+  try {
+    const saved = JSON.parse(localStorage.getItem(INPUT_KEY) || 'null');
+    const savedSysInv = JSON.parse(localStorage.getItem(SYSTEM_INVENTORY_KEY) || 'null');
+    const st = JSON.parse(localStorage.getItem(STATE_KEY) || 'null');
+
+    if(st && st.report) reportType.value = st.report;
+    currentReport = reportType.value;
+    
+    // Restore System Inventory
+    if(savedSysInv) systemInventory = savedSysInv;
+    
+    // Restore Stock Count Lines
+    if(saved && Array.isArray(saved) && saved.length>0){
+      lastLines = saved;
+      parsed = parseLines(lastLines);
+      processVarianceStockCountLines(lastLines); // Update SC inventory for variance
+      updateStats();
+      status(`Restored ${lastLines.length} saved lines. Parsed automatically.`);
+    } else {
+      status('No saved data. Upload an .xlsx file or paste data to start.');
+    }
+    
+    // Set panel visibility
+    if (currentReport === 'variance') {
+      stockCountPanel.style.display = 'none';
+      varianceSetupPanel.style.display = 'block';
+    } else {
+      stockCountPanel.style.display = 'block';
+      varianceSetupPanel.style.display = 'none';
+    }
+    
+    updateVarianceStats();
+    renderTable();
+
+  } catch(e){
+    // ignore restore errors
+  }
+}
+restore();
+
+// clear saved data
+clearBtn.addEventListener('click', ()=>{
+  if(!confirm('Clear saved scanned data from this browser?')) return;
+  localStorage.removeItem(INPUT_KEY);
+  localStorage.removeItem(STATE_KEY);
+  localStorage.removeItem(SYSTEM_INVENTORY_KEY); // Clear system inventory too
+  lastLines = [];
+  parsed = null;
+  systemInventory = {};
+  stockCountInventory = {};
+  varianceReportData = [];
+  pasteAreaStock.value = '';
+  pasteAreaSystem.value = '';
+  pasteAreaVarianceSC.value = '';
+  tableWrap.innerHTML = '<div style="padding:18px;" id="placeholder">Saved data cleared. Upload an .xlsx or paste data to start.</div>';
+  savedInd.textContent = 'No';
+  statsRow.style.display = 'none';
+  status('Saved data cleared.');
+  updateVarianceStats(); // Clear variance stats
+});
+
+// generate sample .xlsx (Keeping existing sample logic for stock count lines)
+downloadSample.addEventListener('click', (e)=>{
+  e.preventDefault();
+  const sample = [
+    ['Location / Barcode Scaning'],
+    ['AA101101'],
+    ['10987899875'],
+    ['10987899875'],
+    ['10987899875'],
+    ['10987899876'],
+    ['AA101102'],
+    ['10287899875'],
+    ['10287899875'],
+    ['LM101103'],
+    ['10283679875'],
+  ];
+  const ws = XLSX.utils.aoa_to_sheet(sample);
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Sheet1');
+  const wbout = XLSX.write(wb, {bookType:'xlsx', type:'array'});
+  const blob = new Blob([wbout], {type:'application/octet-stream'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'sample_stock_scan.xlsx';
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+  status('Sample generated. Open and upload it (Choose File).');
+});
+</script></body></html>
